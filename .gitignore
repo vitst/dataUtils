@@ -1,3 +1,8 @@
+# fine ignore
+twoTimeCorr/data
+twoTimeCorr/build
+twoTimeCorr/res
+
 # Prerequisites
 *.d
 
