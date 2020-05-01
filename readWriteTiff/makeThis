@@ -1,0 +1,3 @@
+#!/bin/bash
+
+g++ tiffr_v02.cpp -ltiff -o tiffr

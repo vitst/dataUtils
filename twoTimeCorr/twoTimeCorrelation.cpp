@@ -6,7 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <sys/time.h>
+
+#include <tiffio.h>
 
 #include <Kokkos_Core.hpp>
 
@@ -14,20 +17,78 @@
 #include <KokkosBlas2_gemv.hpp>
 #include <KokkosBlas1_team_dot.hpp>
 
-#include <string>
-#include <iostream>
-#include <filesystem>
-namespace fs = std::filesystem;
-
 int main( int argc, char* argv[] )
 {
+  
+  Kokkos::ScopeGuard guard( argc, argv );
+  
   // TODO read this from arguments
   int Ntime = 1000;         // total size 2^22
   int N = 64;         // number of rows 2^12
   int M = 64;         // number of columns 2^10
 
-  Kokkos::initialize( argc, argv );
+  // TODO hardcoding filenames
+  char chName[16]; // string which will contain the number
+  std::vector<std::string> fns;
+  //std::string pre = "elpsd";
+  //std::string pre = "";
+  for(int i=0; i<Ntime-990; ++i){
+    sprintf( chName, "elpsd%05d00.tif", i+1);
+    std::stringstream ss;
+    ss << chName;
+    printf("Filename : %s\n", chName);
+    fns.push_back( ss.str() );
+  }
+
+  auto closeTIFF = [](TIFF *tif){ TIFFClose(tif); };
+  //std::unique_ptr<TIFF, decltype(closeTIFF)> tif (TIFFOpen(std::string("../data/"+fns.front()).c_str(), "r"), closeTIFF);
+  std::unique_ptr<TIFF, decltype(closeTIFF)> tif (TIFFOpen("../synt.tif", "r"), closeTIFF);
+  uint32 w; uint32 h;
+  //uint32 imagelength;
+  TIFFGetField(tif.get(), TIFFTAG_IMAGEWIDTH, &w);
+  TIFFGetField(tif.get(), TIFFTAG_IMAGELENGTH, &h);
+  //TIFFGetField(tif.get(), TIFFTAG_IMAGELENGTH, &imagelength);
+  size_t npixels = w*h;
+  size_t linesize = TIFFScanlineSize(tif.get());
+  
+  // Allocate view for the tiff data on device
+  Kokkos::View<float**> Atif( "tif_array", w, h );
+  // Create host mirror of device view
+  //Kokkos::View<float**>::HostMirror h_Atif = Kokkos::create_mirror_view( Atif );
+
+  auto buffer = static_cast<uint32*>(_TIFFmalloc(npixels*sizeof(uint32)));
+  
+  for (uint32 row = 0; row < h; ++row){
+    //auto auxLine = Kokkos::subview(h_Atif, Kokkos::ALL, row);
+    //if (!TIFFReadScanline(tif.get(), buffer[ row * w ], row))
+    if (!TIFFReadScanline(tif.get(), buffer+row*w, row))
+      throw std::runtime_error("oh nooooo");
+    //auxLine = reinterpret_cast<float*>(buffer);
+    //auxLine = buffer;
+  }
+
+  std::cout << buffer << "  npix: " << npixels 
+            << "  w: " << w << "  h: " << h << std::endl;
+
+  //Kokkos::deep_copy(Atif, h_Atif);
+  Kokkos::deep_copy(Atif, Kokkos::View<float**, Kokkos::LayoutLeft, Kokkos::HostSpace, 
+                                    Kokkos::MemoryUnmanaged>(reinterpret_cast<float*>(buffer), w, h));
+  // apparently order matters
+  // Kokkos::deep_copy(A, Kokkos::View<float**, Kokkos::HostSpace, Kokkos::LayoutRight, Kokkos::MemoryUnmanaged>(reinterpret_cast<float*>(buffer), w, h));
+
+  //auto A_h = Kokkos::create_mirror_view(Kokkos::HostSpace{}, A);
+  for (int i = 0; i < h; ++i){
+    for (int j = 0; j < w; ++j)
+      std::cout << Atif(i, j) << "  ";
+    std::cout << '\n';
+  }
+
+  //printf( "  Computed result for %d x %d is %lf\n", N, M, result );
+
   {
+    
+    
+    /*
     // typedef Kokkos::DefaultExecutionSpace::array_layout  Layout;
     // typedef Kokkos::LayoutLeft   Layout;
     typedef Kokkos::LayoutRight  Layout;
@@ -75,9 +136,10 @@ int main( int argc, char* argv[] )
 
     //KokkosBlas::gemv("N",alpha,A,x,beta,tmp);
     //result = KokkosBlas::dot(y, tmp);
+    */
   }
   
-  Kokkos::finalize();
+  //Kokkos::finalize();
 
   return 0;
 }

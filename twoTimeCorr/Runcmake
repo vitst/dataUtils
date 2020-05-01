@@ -1,0 +1,8 @@
+#!/bin/bash
+
+pushd build
+#cmake -DCMAKE_CXX_STANDARD=17 \
+cmake -DCMAKE_CXX_COMPILER=$HOME/Kokkos/kokkos-3.1.00/bin/nvcc_wrapper \
+      -DKokkosKernels_DIR=$HOME/.local/kokkos/kokkos_cuda/lib/cmake/KokkosKernels \
+      ..
+popd
